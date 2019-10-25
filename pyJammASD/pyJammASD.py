@@ -173,7 +173,7 @@ def getKeysByValue(dictOfElements, valueToFind):
     for item  in listOfItems:
         if item[1] == valueToFind:
             listOfKeys.append(item[0])
-    return  listOfKeys    
+    return listOfKeys    
 
 
 
@@ -224,10 +224,11 @@ def jammasd_crc8(msg):
 
 
 def jammasd_hid_open():
-    return hidapi.hid_open(vendor_id=0xd8, product_id=0xf3ad)
+    return hidapi.hid_open(vendor_id=0x04d8, product_id=0xf3ad)
+    #return hidapi.hid_open(vendor_id=0x06cb, product_id=0x82f1)
 
 def jammasd_hid_close(jammasd_id):
-    return hid_close(jammasd_id)
+    return hidapi.hid_close(jammasd_id)
 
 def jammasd_hid_list_devices():
     hidapi.hid_init()
@@ -240,20 +241,19 @@ def jammasd_hid_read(rule):
     jammasd_id = jammasd_hid_open()
         
     #Init message is 00  +  length(2)  +  decimal 112 (70), so 000270
-    msg_bodyhex = codecs.decode("0270", "hex_codec")
+    msg_bodyhex = codecs.decode("70", "hex_codec")
     
-    msg_header = bytearray(codecs.decode("00", "hex_codec"))
+    msg_header = bytearray(codecs.decode("0002", "hex_codec"))
     msg_body = bytearray(msg_bodyhex)
-    msg_crc = jammasd_crc8(msg_bodyhex)
+    msg_crc = codecs.decode(jammasd_crc8(bytearray(msg_bodyhex)), "hex_codec")
     
     msg_array = [msg_header, msg_body, msg_crc, bytearray(codecs.decode("000000000000000000000000", "hex_codec"))]
     msg = b''.join(msg_array)
     
-    hid_send_feature_report(jammasd_id, msg)    
-    msg_data = hid_get_feature_report(jammasd_id, bytearray(codecs.decode("0000000000000000000000000000000000", "hex_codec")))
-    
+    hidapi.hid_send_feature_report(jammasd_id, msg)    
+    msg_data = hidapi.hid_get_feature_report(jammasd_id, bytearray(codecs.decode("0000000000000000000000000000000000", "hex_codec")))
     print(str(msg_data))
-    
+        
     jammasd_hid_close(jammasd_id)
     sys.exit(0)
 
@@ -270,23 +270,22 @@ def jammasd_hid_write(rule, pin_jamma, key_jamma):
 
         
     #Init message is 00  +  length(5)  +  decimal 12 (0C), so 00050C
-    msg_bodyhex = codecs.decode("050C", "hex_codec")
+    msg_bodyhex = codecs.decode("0C", "hex_codec")
     
-    msg_header = bytearray(codecs.decode("00", "hex_codec"))
+    msg_header = bytearray(codecs.decode("0500", "hex_codec"))
     
     #msg_bit:  enable|shifted<<1|inverse<<2|toggle<<3|repeat<<4|pulse<<5
     msg_bit = codecs.decode("01", "hex_codec")
     
-    msg_pin_jamma = getKeysByValue(jammasdPIN, pin_jamma)
-    msg_key_jamma = getKeysByValue(jammasdKEY, jammasdKEY)
-    msg_rule = "%02X" % rule
-    msg_body = msg_bodyhex + msg_rule + msg_bit + msg_pin_jamma + msg_key_jamma
-    msg_crc = jammasd_crc8(msg_body)
-    #msg_body = bytearray(msg_bodyhex + )
+    msg_pin_jamma = codecs.decode("%02x" % int(getKeysByValue(jammasdPIN, pin_jamma)[0]), "hex_codec")
+    msg_key_jamma = codecs.decode("%02x" % int(getKeysByValue(jammasdKEY, key_jamma)[0]), "hex_codec")
+    msg_rule = codecs.decode("%02x" % int(rule), "hex_codec")
     
-    
+    msg_body = b''.join([msg_bodyhex, msg_rule, msg_bit, msg_pin_jamma, msg_key_jamma])
+    msg_crc = codecs.decode(jammasd_crc8(msg_body), "hex_codec")
     msg_array = [msg_header, msg_body, msg_crc, bytearray(codecs.decode("000000000000000000", "hex_codec"))]
-    msg = b''.join(msg_array)    
+    msg = b''.join(msg_array)
+    hidapi.hid_send_feature_report(jammasd_id, msg)    
     
     jammasd_hid_close(jammasd_id)
     sys.exit(0)
@@ -300,6 +299,16 @@ if __name__ == '__main__':
     parser.add_option('-s', '--set',       default=None, dest='action_set', help='set a rule', action='store_true')
     parser.add_option('-l', '--list-hid',  default=None, dest='action_list', help='list all hid', action='store_true')
     args, argCmdLine = parser.parse_args()
+    
+    
+    """incoming = "010203"
+    if sys.version_info[0] == 3:
+        hex_data = codecs.decode(incoming, "hex_codec")
+    else:
+        hex_data = incoming.decode("hex")
+    print(hex_data)
+    msg = bytearray(hex_data)
+    sys.exit(0)"""
     
     #mydict = {'george':'16_','amber':19}
     #print (getKeysByValue(mydict, '16_'))

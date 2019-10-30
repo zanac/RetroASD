@@ -426,6 +426,7 @@ if __name__ == '__main__':
     parser.add_option('-r', '--rule',      default=None, dest='rule',           help='Rule, range 0..100')
     parser.add_option('-p', '--jammapin',  default=None, dest='jamma_pin',      help='set jamma pin')
     parser.add_option('-k', '--keycode',   default=None, dest='keycode',        help='set scancode keyboard emulated')
+    parser.add_option('-f', '--flag',      default=None, dest='flag',           help='set additional flag to the key')
     parser.add_option('-i', '--info',      default=None, dest='info_table',     help='show info about jamma_pin or keycode tables [p,k]')
     parser.add_option('-g', '--get',       default=None, dest='action_get',     help='get a rule', action='store_true')
     parser.add_option('-s', '--set',       default=None, dest='action_set',     help='set a rule', action='store_true')
@@ -452,6 +453,7 @@ if __name__ == '__main__':
            not args.action_set and \
            not args.action_list and \
            not args.info_table and \
+           not args.flag and \
            not args.action_default and \
            not args.action_video:
             parser.error('Please give a right command, see -h for help')
@@ -502,7 +504,7 @@ if __name__ == '__main__':
                     print("keycode not defined")
                     sys.exit(1)
 
-                jammasd_rule_write(args.rule, jamma_pin, keycode)
+                jammasd_rule_write(args.rule, jamma_pin, keycode, 1, 0, 0, 0, 0, 0)
         
         if args.action_list:
             if args.action_video:

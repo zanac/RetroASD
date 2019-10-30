@@ -8,10 +8,11 @@
 
 import binascii
 import sys
-#import hid
+import configparser
 from hidapi import *
 from optparse import OptionParser
 
+import codecs
 if sys.version_info[0] == 3:
     import codecs
 
@@ -88,7 +89,7 @@ jammasdKEY = {     "0":"NONE",
                    "42":"BKSP",
                    "43":"TAB",
                    "44":"SPACE",
-                   "45":"'",
+                   "45":"APEX",
                    "46":"IGRAVE",
                    "47":"EGRAVE",
                    "48":"+",
@@ -128,7 +129,7 @@ jammasdKEY = {     "0":"NONE",
                    "83":"NUM",
                    "84":"KP_/",
                    "85":"KP_*",
-                   "86":"KP_--",
+                   "86":"KP_-",
                    "87":"KP_+",
                    "88":"KP_ENTER",
                    "89":"KP_1",
@@ -142,7 +143,7 @@ jammasdKEY = {     "0":"NONE",
                    "97":"KP_9",
                    "98":"KP_0",
                    "99":"KP_.",
-                   "100":"<",
+                   "100":"MINOR",
                    "101":"APPS",
                    "102":"L_CTRL",
                    "103":"L_SHIFT",
@@ -244,24 +245,50 @@ def jammasd_hid_read(rule):
     msg_bodyhex = codecs.decode("70", "hex_codec")
     
     msg_header = bytearray(codecs.decode("0002", "hex_codec"))
-    msg_body = bytearray(msg_bodyhex)
-    msg_crc = codecs.decode(jammasd_crc8(bytearray(msg_bodyhex)), "hex_codec")
     
-    msg_array = [msg_header, msg_body, msg_crc, bytearray(codecs.decode("000000000000000000000000", "hex_codec"))]
-    msg = b''.join(msg_array)
+    msg_body = bytearray()
+    msg_body.extend(msg_bodyhex)
+    msg_crc = codecs.decode(jammasd_crc8(msg_body), "hex_codec")
+
+    msg_array = bytearray()
+    msg_array.extend(msg_header)
+    msg_array.extend(msg_body)
+    msg_array.extend(msg_crc)
+    msg_array.extend(bytearray(codecs.decode("000000000000000000000000000000", "hex_codec")))
+    hidapi.hid_send_feature_report(jammasd_id, msg_array)    
     
-    hidapi.hid_send_feature_report(jammasd_id, msg)    
-    msg_data = hidapi.hid_get_feature_report(jammasd_id, bytearray(codecs.decode("0000000000000000000000000000000000", "hex_codec")))
+    msg_buffer = bytearray(codecs.decode("0000000000000000000000000000000000", "hex_codec"))
+    msg_data = hidapi.hid_get_feature_report(jammasd_id, msg_buffer)
+    print(len(msg_data))
     print(str(msg_data))
+    print(len(msg_buffer))
+    print(str(msg_buffer))
         
     jammasd_hid_close(jammasd_id)
     sys.exit(0)
 
-def jammasd_hid_write(rule, pin_jamma, key_jamma):
+def jammasd_hid_video_read():
     hidapi.hid_init()
     jammasd_id = jammasd_hid_open()
-        
-        
+    
+    jammasd_state = hidapi.hid_read(jammasd_id, 8)
+    print(str(jammasd_state))
+    jammasd_video_frequency_h_raw = jammasd_state[4:2]
+    jammasd_video_frequency_v_raw = jammasd_state[7:2]
+    for i in jammasd_video_frequency_v_raw:
+        print(str(i))
+
+    import struct
+    jammasd_video_frequency_h = struct.unpack(">H", jammasd_video_frequency_h_raw)[0]*10
+    jammasd_video_frequency_v = 1/(struct.unpack(">H", jammasd_video_frequency_v_raw)[0]*16*0.000000667)
+    print("H Frequency: %s" % str(jammasd_video_frequency_h))
+    print("V Frequency: %s" % str(jammasd_video_frequency_v))
+    
+    jammasd_hid_close(jammasd_id)
+    sys.exit(0)
+
+
+def jammasd_rule_write_hid(hid_id, rule, pin_jamma, key_jamma, flagEnable, flagShifted, flagInverse, flagToggle, flagRepeat, flagPulse):
     """byte 1: 12
     byte 2: numero di regola da 1 a 100. la numero 0 ha una funzione particolare che poi ci arriviamo
 
@@ -272,32 +299,139 @@ def jammasd_hid_write(rule, pin_jamma, key_jamma):
     #Init message is 00  +  length(5)  +  decimal 12 (0C), so 00050C
     msg_bodyhex = codecs.decode("0C", "hex_codec")
     
-    msg_header = bytearray(codecs.decode("0500", "hex_codec"))
+    msg_header = bytearray(codecs.decode("0005", "hex_codec"))
     
     #msg_bit:  enable|shifted<<1|inverse<<2|toggle<<3|repeat<<4|pulse<<5
-    msg_bit = codecs.decode("01", "hex_codec")
+    msg_bit = codecs.decode("%02x" % (flagEnable|flagShifted<<1|flagInverse<<2|flagToggle<<3|flagRepeat<<4|flagPulse<<5), "hex_codec")
     
     msg_pin_jamma = codecs.decode("%02x" % int(getKeysByValue(jammasdPIN, pin_jamma)[0]), "hex_codec")
     msg_key_jamma = codecs.decode("%02x" % int(getKeysByValue(jammasdKEY, key_jamma)[0]), "hex_codec")
     msg_rule = codecs.decode("%02x" % int(rule), "hex_codec")
     
-    msg_body = b''.join([msg_bodyhex, msg_rule, msg_bit, msg_pin_jamma, msg_key_jamma])
+    #msg_body = b''.join([msg_bodyhex, msg_rule, msg_bit, msg_pin_jamma, msg_key_jamma])
+    msg_body = bytearray()
+    msg_body.extend(msg_bodyhex)
+    msg_body.extend(msg_rule)
+    msg_body.extend(msg_bit)
+    msg_body.extend(msg_pin_jamma)
+    msg_body.extend(msg_key_jamma)
+
+    #.extend(msg_rule).extend(msg_bit).extend(msg_pin_jamma).extend(msg_key_jamma)
     msg_crc = codecs.decode(jammasd_crc8(msg_body), "hex_codec")
-    msg_array = [msg_header, msg_body, msg_crc, bytearray(codecs.decode("000000000000000000", "hex_codec"))]
-    msg = b''.join(msg_array)
-    hidapi.hid_send_feature_report(jammasd_id, msg)    
-    
+    #msg_array = [msg_header, msg_body, msg_crc, bytearray(codecs.decode("0000000000000000000000", "hex_codec"))]
+    msg_array = bytearray()
+    msg_array.extend(msg_header)
+    msg_array.extend(msg_body)
+    msg_array.extend(msg_crc)
+    msg_array.extend(bytearray(codecs.decode("0000000000000000000000", "hex_codec")))
+    for i in msg_array:
+        print("%02x" % i)
+
+    #msg = b''.join(msg_array)
+    print(str(msg_array))
+    xx = hidapi.hid_send_feature_report(hid_id, msg_array)    
+
+
+def jammasd_rule_write(rule, pin_jamma, key_jamma, flagEnable, flagShifted, flagInverse, flagToggle, flagRepeat, flagPulse):
+    hidapi.hid_init()
+    jammasd_id = jammasd_hid_open()
+        
+    jammasd_rule_write_hid(jammasd_id, rule, pin_jamma, key_jamma, flagEnable, flagShifted, flagInverse, flagToggle, flagRepeat, flagPulse)
     jammasd_hid_close(jammasd_id)
     sys.exit(0)
 
+
+def jammasd_init_jamma():
+    rule_list = [
+        #{"rule":0,  "pin_jamma":"P1_START", "key_jamma":"NONE"},
+        {"rule":1,  "pin_jamma":"TEST", "key_jamma":"9", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":2,  "pin_jamma":"P1_COIN", "key_jamma":"5", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":3,  "pin_jamma":"P1_START", "key_jamma":"1", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":4,  "pin_jamma":"P1_UP", "key_jamma":"U_ARROW", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":5,  "pin_jamma":"P1_DOWN", "key_jamma":"D_ARROW", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":6,  "pin_jamma":"P1_LEFT", "key_jamma":"L_ARROW", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":7,  "pin_jamma":"P1_RIGHT", "key_jamma":"R_ARROW", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":8,  "pin_jamma":"P1_BUTTON_1", "key_jamma":"L_CTRL", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":9,  "pin_jamma":"P1_BUTTON_2", "key_jamma":"L_ALT", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":10, "pin_jamma":"P1_BUTTON_3", "key_jamma":"SPACE", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":11, "pin_jamma":"P1_BUTTON_4", "key_jamma":"L_SHIFT", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":12, "pin_jamma":"P1_BUTTON_5", "key_jamma":"Z", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":13, "pin_jamma":"P1_BUTTON_6", "key_jamma":"X", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":14, "pin_jamma":"P1_BUTTON_7", "key_jamma":"C", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":15, "pin_jamma":"P1_BUTTON_8", "key_jamma":"V", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":16, "pin_jamma":"SERVICE", "key_jamma":"F2", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":17, "pin_jamma":"P2_COIN", "key_jamma":"6", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":18, "pin_jamma":"P2_START", "key_jamma":"2", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":19, "pin_jamma":"P2_UP", "key_jamma":"R", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":20, "pin_jamma":"P2_DOWN", "key_jamma":"F", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":21, "pin_jamma":"P2_LEFT", "key_jamma":"D", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":22, "pin_jamma":"P2_RIGHT", "key_jamma":"G", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":23, "pin_jamma":"P2_BUTTON_1", "key_jamma":"A", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":24, "pin_jamma":"P2_BUTTON_2", "key_jamma":"S", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":25, "pin_jamma":"P2_BUTTON_3", "key_jamma":"Q", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":26, "pin_jamma":"P2_BUTTON_4", "key_jamma":"W", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":27, "pin_jamma":"P2_BUTTON_5", "key_jamma":"I", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":28, "pin_jamma":"P2_BUTTON_6", "key_jamma":"K", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":29, "pin_jamma":"P2_BUTTON_7", "key_jamma":"J", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":30, "pin_jamma":"P2_BUTTON_8", "key_jamma":"L", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":31, "pin_jamma":"TEST", "key_jamma":"NONE", "flagEnable":0, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},        
+        {"rule":32, "pin_jamma":"P1_BUTTON_1", "key_jamma":"5", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":33, "pin_jamma":"P1_BUTTON_2", "key_jamma":"6", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":34, "pin_jamma":"P1_BUTTON_6", "key_jamma":"TAB", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":35, "pin_jamma":"P2_START", "key_jamma":"ESC", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":36, "pin_jamma":"P1_UP", "key_jamma":"KP_+", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":37, "pin_jamma":"P1_DOWN", "key_jamma":"KP_-", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":38, "pin_jamma":"P1_COIN", "key_jamma":"6", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+]
+        
+    for i in range(39,101):
+        rule_list.append({"rule":i, "pin_jamma":"TEST", "key_jamma":"NONE", "flagEnable":0, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0})
+    
+    #p2 start+coin = 6 (gettone per player 2)
+    
+    hidapi.hid_init()
+    jammasd_id = jammasd_hid_open()
+        
+    for rule in rule_list:
+        jammasd_rule_write_hid(jammasd_id,
+                               rule["rule"],
+                               rule["pin_jamma"],
+                               rule["key_jamma"],
+                               rule["flagEnable"],
+                               rule["flagShifted"],
+                               rule["flagInverse"],
+                               rule["flagToggle"],
+                               rule["flagRepeat"],
+                               rule["flagPulse"])
+
+    jammasd_hid_close(jammasd_id)
+
+def jammasd_print_infotable(info_table):
+    if info_table == "P":
+        print("JAMMA_PIN table:")
+        print("------------------------------------------------------")
+        for k in jammasdPIN.values():
+            print(k)
+            
+    if info_table == "K":
+        print("JAMMA KEYCODE table:")
+        print("------------------------------------------------------")
+        for k in jammasdKEY.values():
+            print(k)
+    sys.exit(0)
+
+
 if __name__ == '__main__':
     parser = OptionParser()
-    parser.add_option('-r', '--rule',      default=None, dest='rule',       help='Rule, range 1..100')
-    parser.add_option('-p', '--jammapin',  default=None, dest='jamma_pin',  help='set jamma pin')
-    parser.add_option('-k', '--keycode',   default=None, dest='keycode',    help='set scancode keyboard emulated')
-    parser.add_option('-g', '--get',       default=None, dest='action_get', help='get a rule', action='store_true')
-    parser.add_option('-s', '--set',       default=None, dest='action_set', help='set a rule', action='store_true')
-    parser.add_option('-l', '--list-hid',  default=None, dest='action_list', help='list all hid', action='store_true')
+    parser.add_option('-r', '--rule',      default=None, dest='rule',           help='Rule, range 0..100')
+    parser.add_option('-p', '--jammapin',  default=None, dest='jamma_pin',      help='set jamma pin')
+    parser.add_option('-k', '--keycode',   default=None, dest='keycode',        help='set scancode keyboard emulated')
+    parser.add_option('-i', '--info',      default=None, dest='info_table',     help='show info about jamma_pin or keycode tables [p,k]')
+    parser.add_option('-g', '--get',       default=None, dest='action_get',     help='get a rule', action='store_true')
+    parser.add_option('-s', '--set',       default=None, dest='action_set',     help='set a rule', action='store_true')
+    parser.add_option('-v', '--video',     default=None, dest='action_video',   help='get video frequency', action='store_true')
+    parser.add_option('-l', '--list-hid',  default=None, dest='action_list',    help='list all hid', action='store_true')
+    parser.add_option('-d', '--default',   default=None, dest='action_default', help='default keymap jammasd', action='store_true')
     args, argCmdLine = parser.parse_args()
     
     
@@ -314,12 +448,28 @@ if __name__ == '__main__':
     #print (getKeysByValue(mydict, '16_'))
     #sys.exit(0)
     if not argCmdLine:
-        if not args.action_get and not args.action_set and not args.action_list:
-            parser.error('Please give a read or set argument')
+        if not args.action_get and \
+           not args.action_set and \
+           not args.action_list and \
+           not args.info_table and \
+           not args.action_default and \
+           not args.action_video:
+            parser.error('Please give a right command, see -h for help')
             sys.exit(1)
         
+        if (args.action_default):
+            jammasd_init_jamma()
+            sys.exit(0)
                 
         if (args.action_get or args.action_set):
+            if args.action_video:
+                print("Option video not compatible with get or set")
+                sys.exit(1)
+                
+            if args.info_table:
+                print("Option info-table not compatible with get or set")
+                sys.exit(1)
+                
             if args.action_list:
                 print("Option list not compatible with get or set")
                 sys.exit(1)
@@ -328,12 +478,8 @@ if __name__ == '__main__':
                 print("Please give a rule with --rule argument")
                 sys.exit(1)
             
-            if not args.rule.isnumeric():
-                print("Rule is not numeric")
-                sys.exit(1)
-
             rule = int(args.rule)
-            if not (rule in range(1, 100)):
+            if not (rule in range(0, 100)):
                 print("Please give a rule between 1..100")
                 sys.exit(1)
             
@@ -356,13 +502,39 @@ if __name__ == '__main__':
                     print("keycode not defined")
                     sys.exit(1)
 
-                jammasd_hid_write(args.rule, jamma_pin, keycode)
+                jammasd_rule_write(args.rule, jamma_pin, keycode)
         
         if args.action_list:
-            jammasd_hid_list_devices()
+            if args.action_video:
+                print("Option video not compatible")
+                sys.exit(1)
+                
+            if args.info_table:
+                print("Option info_table not compatible")
+                sys.exit(1)
 
+            jammasd_hid_list_devices()
+        
+        if args.action_video:                
+            if args.info_table:
+                print("Option info_table not compatible")
+                sys.exit(1)
+            jammasd_hid_video_read()
+            sys.exit(0)
+        
+        if args.info_table:
+            info_table = args.info_table.upper()
+            if info_table not in ["P", "K"]:
+                print("Info table must be use with P or K option")
+                sys.exit(1)
+
+            jammasd_print_infotable(info_table)
+            sys.exit(0)
+
+        print("Please see -h for help")
         sys.exit(0)
     else:
+        print("Please see -h for help")
         sys.exit(1)
 
     """if not sys.stdin.isatty():

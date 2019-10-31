@@ -9,6 +9,7 @@
 import binascii
 import sys
 import configparser
+import struct
 from hidapi import *
 from optparse import OptionParser
 
@@ -273,12 +274,11 @@ def jammasd_hid_video_read():
     
     jammasd_state = hidapi.hid_read(jammasd_id, 8)
     print(str(jammasd_state))
-    jammasd_video_frequency_h_raw = jammasd_state[4:2]
-    jammasd_video_frequency_v_raw = jammasd_state[7:2]
+    jammasd_video_frequency_h_raw = jammasd_state[4:6]
+    jammasd_video_frequency_v_raw = jammasd_state[7:9]
     for i in jammasd_video_frequency_v_raw:
         print(str(i))
-
-    import struct
+    
     jammasd_video_frequency_h = struct.unpack(">H", jammasd_video_frequency_h_raw)[0]*10
     jammasd_video_frequency_v = 1/(struct.unpack(">H", jammasd_video_frequency_v_raw)[0]*16*0.000000667)
     print("H Frequency: %s" % str(jammasd_video_frequency_h))
@@ -343,10 +343,10 @@ def jammasd_rule_write(rule, pin_jamma, key_jamma, flagEnable, flagShifted, flag
 
 def jammasd_init_jamma():
     rule_list = [
-        #{"rule":0,  "pin_jamma":"P1_START", "key_jamma":"NONE"},
+        {"rule":0,  "pin_jamma":"P1_START", "key_jamma":"1", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
         {"rule":1,  "pin_jamma":"TEST", "key_jamma":"9", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
         {"rule":2,  "pin_jamma":"P1_COIN", "key_jamma":"5", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":3,  "pin_jamma":"P1_START", "key_jamma":"1", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
+        {"rule":3,  "pin_jamma":"P1_START", "key_jamma":"1", "flagEnable":0, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
         {"rule":4,  "pin_jamma":"P1_UP", "key_jamma":"U_ARROW", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
         {"rule":5,  "pin_jamma":"P1_DOWN", "key_jamma":"D_ARROW", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
         {"rule":6,  "pin_jamma":"P1_LEFT", "key_jamma":"L_ARROW", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
@@ -406,6 +406,44 @@ def jammasd_init_jamma():
 
     jammasd_hid_close(jammasd_id)
 
+def jammasd_load_config(filename):
+    import json
+    with open(filename, 'r') as f:
+        datastore = json.load(f)
+    #print(str(datastore))
+    
+    rules = {}
+    for i in range(0, 101):
+        rules.update({"rule_%d" % i:{"pin_jamma":"TEST", "key_jamma":"NONE", "flagEnable":0, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0}})
+    for rule in datastore:
+        rules["rule_%s" % rule["rule"]].update({"pin_jamma":rule["pin_jamma"],
+                                                "key_jamma":rule["key_jamma"],
+                                                "flagEnable":rule["flagEnable"],
+                                                "flagShifted":rule["flagShifted"],
+                                                "flagInverse":rule["flagInverse"],
+                                                "flagToggle":rule["flagToggle"],
+                                                "flagRepeat":rule["flagRepeat"],
+                                                "flagPulse":rule["flagPulse"]})
+
+    hidapi.hid_init()
+    jammasd_id = jammasd_hid_open()        
+
+    for i in range(0, 101):
+        rule = rules["rule_%s" % i]
+        jamma_pin = rule["pin_jamma"]
+        keycode = rule["key_jamma"]
+        flagEnable = rule["flagEnable"]
+        flagShifted = rule["flagShifted"]
+        flagInverse = rule["flagInverse"]
+        flagToggle = rule["flagToggle"]
+        flagRepeat = rule["flagRepeat"]
+        flagPulse = rule["flagPulse"]
+        jammasd_rule_write_hid(jammasd_id, i, jamma_pin, keycode, flagEnable, flagShifted, flagInverse, flagToggle, flagRepeat, flagPulse)
+
+    jammasd_hid_close(jammasd_id)
+
+    sys.exit(0)
+
 def jammasd_print_infotable(info_table):
     if info_table == "P":
         print("JAMMA_PIN table:")
@@ -421,7 +459,7 @@ def jammasd_print_infotable(info_table):
     sys.exit(0)
 
 
-if __name__ == '__main__':
+def jammasd_main():
     parser = OptionParser()
     parser.add_option('-r', '--rule',      default=None, dest='rule',           help='Rule, range 0..100')
     parser.add_option('-p', '--jammapin',  default=None, dest='jamma_pin',      help='set jamma pin')
@@ -432,35 +470,22 @@ if __name__ == '__main__':
     parser.add_option('-s', '--set',       default=None, dest='action_set',     help='set a rule', action='store_true')
     parser.add_option('-v', '--video',     default=None, dest='action_video',   help='get video frequency', action='store_true')
     parser.add_option('-l', '--list-hid',  default=None, dest='action_list',    help='list all hid', action='store_true')
-    parser.add_option('-d', '--default',   default=None, dest='action_default', help='default keymap jammasd', action='store_true')
+    parser.add_option('-c', '--config',    default=None, dest='action_config',  help='read a config')
     args, argCmdLine = parser.parse_args()
-    
-    
-    """incoming = "010203"
-    if sys.version_info[0] == 3:
-        hex_data = codecs.decode(incoming, "hex_codec")
-    else:
-        hex_data = incoming.decode("hex")
-    print(hex_data)
-    msg = bytearray(hex_data)
-    sys.exit(0)"""
-    
-    #mydict = {'george':'16_','amber':19}
-    #print (getKeysByValue(mydict, '16_'))
-    #sys.exit(0)
+        
     if not argCmdLine:
         if not args.action_get and \
            not args.action_set and \
            not args.action_list and \
            not args.info_table and \
            not args.flag and \
-           not args.action_default and \
+           not args.action_config and \
            not args.action_video:
             parser.error('Please give a right command, see -h for help')
             sys.exit(1)
         
-        if (args.action_default):
-            jammasd_init_jamma()
+        if (args.action_config):
+            jammasd_load_config(args.action_config)
             sys.exit(0)
                 
         if (args.action_get or args.action_set):
@@ -503,8 +528,34 @@ if __name__ == '__main__':
                 if not getKeysByValue(jammasdKEY, keycode):
                     print("keycode not defined")
                     sys.exit(1)
+                
+                flagEnable = 1
+                flagShifted = 0
+                flagInverse = 0
+                flagToggle = 0
+                flagRepeat = 0
+                flagPulse = 0
+                if args.flag:
+                    if len(args.flag) != 6:
+                        print("Error button flag")
+                        
+                        sys.exit(1)
+                    flagEnable = int(args.flag[0:1])
+                    flagShifted = int(args.flag[1:2])
+                    flagInverse = int(args.flag[2:3])
+                    flagToggle = int(args.flag[3:4])
+                    flagRepeat = int(args.flag[4:5])
+                    flagPulse = int(args.flag[5:6])
+                    if flagEnable not in (0, 1) or \
+                       flagShifted not in (0, 1) or \
+                       flagInverse not in (0, 1) or \
+                       flagToggle not in (0, 1) or \
+                       flagRepeat not in (0, 1) or \
+                       flagPulse not in (0, 1):
+                        print("Error button flag")
+                        sys.exit(1)
 
-                jammasd_rule_write(args.rule, jamma_pin, keycode, 1, 0, 0, 0, 0, 0)
+                jammasd_rule_write(args.rule, jamma_pin, keycode, flagEnable, flagShifted, flagInverse, flagToggle, flagRepeat, flagPulse)
         
         if args.action_list:
             if args.action_video:
@@ -539,21 +590,3 @@ if __name__ == '__main__':
         print("Please see -h for help")
         sys.exit(1)
 
-    """if not sys.stdin.isatty():
-        # there's something in stdin
-        msg = sys.stdin.read().strip()
-        if msg == "":
-            print("No data input. Either provide by stdin or arguments")
-            sys.exit(1)
-    elif len(sys.argv) > 1:
-        msg = sys.argv[1]
-    else:
-        print("No data input. Either provide by stdin or arguments")
-        sys.exit(1)
-
-    try:
-        sys.stdout.write(calc(msg))
-        sys.exit(0)
-    except Exception as err:
-        print("An Error Occured: {0}".format(err))
-        sys.exit(1)"""

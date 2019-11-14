@@ -9,6 +9,7 @@ import binascii
 import sys
 import configparser
 import struct
+import json
 from hidapi import *
 from optparse import OptionParser
 from pyJammASD import *

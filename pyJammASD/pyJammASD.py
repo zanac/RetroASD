@@ -10,6 +10,7 @@ import binascii
 import sys
 import configparser
 import struct
+import json
 from hidapi import *
 from optparse import OptionParser
 
@@ -324,11 +325,7 @@ def jammasd_rule_write_hid(hid_id, rule, pin_jamma, key_jamma, flagEnable, flagS
     msg_array.extend(msg_body)
     msg_array.extend(msg_crc)
     msg_array.extend(bytearray(codecs.decode("0000000000000000000000", "hex_codec")))
-    for i in msg_array:
-        print("%02x" % i)
 
-    #msg = b''.join(msg_array)
-    print(str(msg_array))
     xx = hidapi.hid_send_feature_report(hid_id, msg_array)    
 
 
@@ -340,77 +337,9 @@ def jammasd_rule_write(rule, pin_jamma, key_jamma, flagEnable, flagShifted, flag
     jammasd_hid_close(jammasd_id)
     sys.exit(0)
 
-
-def jammasd_init_jamma():
-    rule_list = [
-        {"rule":0,  "pin_jamma":"P1_START", "key_jamma":"1", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":1,  "pin_jamma":"TEST", "key_jamma":"9", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":2,  "pin_jamma":"P1_COIN", "key_jamma":"5", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":3,  "pin_jamma":"P1_START", "key_jamma":"1", "flagEnable":0, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":4,  "pin_jamma":"P1_UP", "key_jamma":"U_ARROW", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":5,  "pin_jamma":"P1_DOWN", "key_jamma":"D_ARROW", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":6,  "pin_jamma":"P1_LEFT", "key_jamma":"L_ARROW", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":7,  "pin_jamma":"P1_RIGHT", "key_jamma":"R_ARROW", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":8,  "pin_jamma":"P1_BUTTON_1", "key_jamma":"L_CTRL", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":9,  "pin_jamma":"P1_BUTTON_2", "key_jamma":"L_ALT", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":10, "pin_jamma":"P1_BUTTON_3", "key_jamma":"SPACE", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":11, "pin_jamma":"P1_BUTTON_4", "key_jamma":"L_SHIFT", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":12, "pin_jamma":"P1_BUTTON_5", "key_jamma":"Z", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":13, "pin_jamma":"P1_BUTTON_6", "key_jamma":"X", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":14, "pin_jamma":"P1_BUTTON_7", "key_jamma":"C", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":15, "pin_jamma":"P1_BUTTON_8", "key_jamma":"V", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":16, "pin_jamma":"SERVICE", "key_jamma":"F2", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":17, "pin_jamma":"P2_COIN", "key_jamma":"6", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":18, "pin_jamma":"P2_START", "key_jamma":"2", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":19, "pin_jamma":"P2_UP", "key_jamma":"R", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":20, "pin_jamma":"P2_DOWN", "key_jamma":"F", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":21, "pin_jamma":"P2_LEFT", "key_jamma":"D", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":22, "pin_jamma":"P2_RIGHT", "key_jamma":"G", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":23, "pin_jamma":"P2_BUTTON_1", "key_jamma":"A", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":24, "pin_jamma":"P2_BUTTON_2", "key_jamma":"S", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":25, "pin_jamma":"P2_BUTTON_3", "key_jamma":"Q", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":26, "pin_jamma":"P2_BUTTON_4", "key_jamma":"W", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":27, "pin_jamma":"P2_BUTTON_5", "key_jamma":"I", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":28, "pin_jamma":"P2_BUTTON_6", "key_jamma":"K", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":29, "pin_jamma":"P2_BUTTON_7", "key_jamma":"J", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":30, "pin_jamma":"P2_BUTTON_8", "key_jamma":"L", "flagEnable":1, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":31, "pin_jamma":"TEST", "key_jamma":"NONE", "flagEnable":0, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},        
-        {"rule":32, "pin_jamma":"P1_BUTTON_1", "key_jamma":"5", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":33, "pin_jamma":"P1_BUTTON_2", "key_jamma":"6", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":34, "pin_jamma":"P1_BUTTON_6", "key_jamma":"TAB", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":35, "pin_jamma":"P2_START", "key_jamma":"ESC", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":36, "pin_jamma":"P1_UP", "key_jamma":"KP_+", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":37, "pin_jamma":"P1_DOWN", "key_jamma":"KP_-", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-        {"rule":38, "pin_jamma":"P1_COIN", "key_jamma":"6", "flagEnable":1, "flagShifted":1, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0},
-]
-        
-    for i in range(39,101):
-        rule_list.append({"rule":i, "pin_jamma":"TEST", "key_jamma":"NONE", "flagEnable":0, "flagShifted":0, "flagInverse":0, "flagToggle":0, "flagRepeat":0, "flagPulse":0})
-    
-    #p2 start+coin = 6 (gettone per player 2)
-    
-    hidapi.hid_init()
-    jammasd_id = jammasd_hid_open()
-        
-    for rule in rule_list:
-        jammasd_rule_write_hid(jammasd_id,
-                               rule["rule"],
-                               rule["pin_jamma"],
-                               rule["key_jamma"],
-                               rule["flagEnable"],
-                               rule["flagShifted"],
-                               rule["flagInverse"],
-                               rule["flagToggle"],
-                               rule["flagRepeat"],
-                               rule["flagPulse"])
-
-    jammasd_hid_close(jammasd_id)
-
 def jammasd_load_config(filename):
-    import json
     with open(filename, 'r') as f:
         datastore = json.load(f)
-    #print(str(datastore))
     
     rules = {}
     for i in range(0, 101):
